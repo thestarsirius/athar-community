@@ -33,7 +33,7 @@ nav{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 input,textarea,select{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink)}
 label{display:block;margin:12px 0 4px}
 .note{color:var(--mut);font-size:.9rem}
-#msg{margin-top:12px;font-weight:500}
+.msg{margin-top:12px;font-weight:500;min-height:1.5em}
 .verse{font:1.4rem/2 Amiri;text-align:center}
 footer{text-align:center;padding:24px;color:var(--mut);font-size:.9rem}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto}}
@@ -96,6 +96,7 @@ footer{text-align:center;padding:24px;color:var(--mut);font-size:.9rem}
 <label style="display:flex;gap:8px"><input type="checkbox" name="consent" required style="width:auto">أوافق على استخدام بياناتي لمراجعة الطلب والتواصل بشأنه فقط.</label>
 <input name="website" style="display:none" tabindex="-1" autocomplete="off">
 <button class="btn" style="margin-top:12px">إرسال الطلب</button>
+<div class="msg" role="status" aria-live="polite"></div>
 </form>
 </section>
 
@@ -109,9 +110,9 @@ footer{text-align:center;padding:24px;color:var(--mut);font-size:.9rem}
 <label>وسيلة تواصل (اختيارية)<input name="contact" maxlength="120"></label>
 <input name="website" style="display:none" tabindex="-1" autocomplete="off">
 <button class="btn" style="margin-top:12px">إرسال الفكرة</button>
+<div class="msg" role="status" aria-live="polite"></div>
 <p class="note">بيانات صاحبة الفكرة لا تُعرض للعامة.</p>
 </form>
-<div id="msg" role="status"></div>
 </section>
 
 <section>
@@ -180,26 +181,48 @@ function drawA(){
  document.querySelectorAll(".count").forEach(b=>b.onclick=()=>{const k=b.dataset.k;st.a[k]=Math.min(+b.dataset.n,(st.a[k]||0)+1);save(key,st);drawA()});
 }
 $("#tm").onclick=()=>{tab="m";drawA()};$("#te").onclick=()=>{tab="e";drawA()};
-function drawOld(){
- $("#adhk").innerHTML=ADHKAR.map((z,i)=>{const v=st.a[i]||0,ok=v>=z.n;
-  return `<div class="card ${ok?"done":""}"><div>${z.t}</div><div class="note">${z.s}</div>
-  <div class="row" style="margin-top:8px"><button class="btn o count" data-i="${i}" aria-label="تسبيحة">${v} / ${z.n}</button><span>${ok?"اكتمل ✓":""}</span></div></div>`}).join("");
- document.querySelectorAll(".count").forEach(b=>b.onclick=()=>{const i=+b.dataset.i;st.a[i]=Math.min(ADHKAR[i].n,(st.a[i]||0)+1);save(key,st);drawA()});
-}
 $("#resetA").onclick=()=>{st.a={};save(key,st);drawA()};
 const esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const drawE=L=>$("#ev").innerHTML=L.map(e=>`<div class="card"><h3>${e.t}</h3><p>${e.d}</p><p class="note">المدة: ${e.dur}<br>المشاركة: ${e.how}</p></div>`).join("");
+const MSGS={volunteer:"وصلنا طلبك بكل امتنان، وسيتم مراجعته بإذن الله. شكرًا لرغبتك في المساهمة في هذا الأثر.",suggest:"وصلتنا فكرتك، شكرًا لمشاركتك."};
+async function submitTo(ep,data){
+ const api=String(CFG.API||"").replace(/\/+$/,"");
+ if(!api)return{ok:false,msg:"استقبال الطلبات لم يُفعَّل بعد، فلم يُرسل شيء. تواصلي مع إدارة القروب."};
+ const url=api+"/"+ep,ac=new AbortController(),tm=setTimeout(()=>ac.abort(),15000);
+ let r;
+ try{r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data),signal:ac.signal})}
+ catch(e){console.error("[athar] connection error",url,e);
+  return{ok:false,msg:e.name==="AbortError"?"انتهت مهلة الاتصال بالخدمة. جرّبي مرة أخرى.":"تعذّر الاتصال بالخدمة (خطأ اتصال). تأكدي من الإنترنت، فإن استمر فقد تكون الخدمة لا تسمح لهذا الموقع بالإرسال، وعلى الإدارة مراجعة إعدادها."}}
+ finally{clearTimeout(tm)}
+ let t="";try{t=await r.text()}catch(e){}
+ if(!r.ok){console.error("[athar] request rejected",r.status,url,t.slice(0,300));
+  return{ok:false,msg:r.status>=500?`حدث خطأ في الخادم (رمز ${r.status}) ولم يُحفظ طلبك. جرّبي لاحقًا وأبلغي الإدارة إن تكرر.`:`رفضت الخدمة الطلب (رمز ${r.status}). تأكدي من تعبئة الحقول المطلوبة بشكل صحيح.`}}
+ let j=null;try{j=JSON.parse(t)}catch(e){}
+ if(!j||j.ok!==true){console.error("[athar] unexpected response",r.status,url,t.slice(0,300));
+  return{ok:false,msg:`ردّت الخدمة بشكل غير متوقع (رمز ${r.status}) ولم نتأكد من حفظ الطلب.`}}
+ return{ok:true}}
 document.querySelectorAll("form[data-ep]").forEach(f=>f.onsubmit=async ev=>{
- ev.preventDefault();const m=$("#msg");
- if(!CFG.API){m.textContent="استقبال الطلبات لم يُفعَّل بعد، فلم يُرسل شيء. تواصلي مع إدارة القروب.";return}
+ ev.preventDefault();
+ if(f.dataset.busy)return;
+ const m=f.querySelector(".msg"),b=f.querySelector("button");
+ if(!f.reportValidity())return;
+ if([...f.querySelectorAll("[required]")].some(x=>x.type!=="checkbox"&&!x.value.trim())){m.textContent="يرجى تعبئة الحقول المطلوبة.";return}
  const data=Object.fromEntries(new FormData(f));
- try{const r=await fetch(CFG.API+"/"+f.dataset.ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
-  if(!r.ok)throw 0;f.reset();
-  m.textContent=f.dataset.ep==="volunteer"?"وصلنا طلبك بكل امتنان، وسيتم مراجعته بإذن الله. شكرًا لرغبتك في المساهمة في هذا الأثر.":"وصلتنا فكرتك، شكرًا لمشاركتك.";
- }catch(e){m.textContent="تعذّر الإرسال. جرّبي مرة أخرى بعد قليل."}
+ for(const k in data)if(typeof data[k]==="string")data[k]=data[k].trim();
+ if(data.website){f.reset();m.textContent="";return} // حقل فخ للروبوتات
+ f.dataset.busy="1";b.disabled=true;m.textContent="جارٍ الإرسال…";
+ let res;try{res=await submitTo(f.dataset.ep,data)}catch(e){console.error("[athar]",e);res={ok:false,msg:"حدث خطأ غير متوقع ولم يُرسل الطلب."}}
+ delete f.dataset.busy;b.disabled=false;
+ if(res.ok){f.reset();m.textContent=MSGS[f.dataset.ep]}else m.textContent=res.msg;
 });
-async function loadEv(){if(!CFG.SB_URL)return;try{const r=await fetch(CFG.SB_URL+"/rest/v1/events?published=eq.true&order=start_date.asc",{headers:{apikey:CFG.SB_KEY}});const L=await r.json();if(Array.isArray(L)&&L.length)drawE(L.map(x=>({t:esc(x.title),d:esc(x.description),dur:esc(x.duration||(x.start_date?x.start_date+" إلى "+(x.end_date||""):"")),how:esc(x.how)})))}catch(e){}}
-drawW();drawA();loadEv();
+async function loadEv(){
+ if(!CFG.SB_URL||!CFG.SB_KEY)return;
+ try{const r=await fetch(String(CFG.SB_URL).replace(/\/+$/,"")+"/rest/v1/events?published=eq.true&order=start_date.asc",{headers:{apikey:CFG.SB_KEY}});
+  if(!r.ok){console.warn("[athar] events load failed",r.status);return}
+  const L=await r.json();
+  if(Array.isArray(L)&&L.length)drawE(L.map(x=>({t:esc(x.title),d:esc(x.description),dur:esc(x.duration||(x.start_date?x.start_date+" إلى "+(x.end_date||""):"")),how:esc(x.how)})))
+ }catch(e){console.warn("[athar] events unavailable",e)}}
+[drawW,drawA,()=>drawE(EVENTS),loadEv].forEach(fn=>{try{const p=fn();if(p&&p.catch)p.catch(e=>console.warn(e))}catch(e){console.error("[athar]",e)}});
 </script>
 </body>
 </html>
