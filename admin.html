@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>لوحة إدارة أثر</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<style>
+:root{--bg:#faf7f4;--ink:#2b2140;--mut:#6d6483;--pri:#6b4fa0;--soft:#efe8f7;--card:#fff;--line:#e4daf0}
+@media(prefers-color-scheme:dark){:root{--bg:#1c162b;--ink:#f1ebf8;--mut:#b4a9c9;--pri:#b79bf0;--soft:#2c2342;--card:#261e3a;--line:#3a2f55}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.7 Tahoma,sans-serif;padding:16px;max-width:760px;margin:auto}
+h1{color:var(--pri)}.c{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:10px 0}
+input,textarea,select{width:100%;font:inherit;padding:8px;margin:4px 0 8px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+button{font:inherit;border:0;border-radius:99px;padding:8px 16px;margin:2px;background:var(--pri);color:#fff;cursor:pointer}button.o{background:none;color:var(--pri);border:1px solid var(--pri)}
+.k{color:var(--mut);font-size:.9rem}#app{display:none}
+</style></head><body>
+<h1>لوحة إدارة أثر</h1>
+<div id="login" class="c"><input id="em" type="email" placeholder="البريد" autocomplete="username"><input id="pw" type="password" placeholder="كلمة المرور" autocomplete="current-password"><button id="go">دخول</button><div id="err" class="k"></div></div>
+<div id="app"><div><button data-t="volunteers">المتطوعات</button><button class="o" data-t="suggestions">الاقتراحات</button><button class="o" data-t="events">الفعاليات</button><button class="o" id="out">خروج</button></div><div id="list"></div></div>
+<script>
+const $=s=>document.querySelector(s);
+const sb=window.supabase.createClient(ATHAR_CONFIG.SB_URL,ATHAR_CONFIG.SB_KEY);
+const ST={volunteers:["جديد","قائمة انتظار","مقبولة","مرفوضة"],suggestions:["جديد","قيد المراجعة","معتمد","قيد التنفيذ","تم التنفيذ","غير مناسب حاليًا"]};
+const LB={name:"الاسم",contact:"التواصل",member:"عضوة بالقروب",reason:"السبب",tasks:"المهام",times:"الأوقات",hours:"الوقت المتاح",ideas:"أفكار",title:"العنوان",body:"الوصف",cat:"التصنيف"};
+let tab="volunteers";
+function el(t,p={},ch=[]){const e=document.createElement(t);Object.assign(e,p);[].concat(ch).forEach(c=>e.append(c));return e}
+$("#go").onclick=async()=>{
+ const {error}=await sb.auth.signInWithPassword({email:$("#em").value,password:$("#pw").value});
+ if(error){$("#err").textContent="بيانات الدخول غير صحيحة";return}
+ const {data}=await sb.from("admins").select("user_id");
+ if(!data||!data.length){await sb.auth.signOut();$("#err").textContent="هذا الحساب بلا صلاحية إدارة";return}
+ $("#login").style.display="none";$("#app").style.display="block";show("volunteers");
+};
+$("#out").onclick=async()=>{await sb.auth.signOut();location.reload()};
+document.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-t]").forEach(x=>x.className="o");b.className="";show(b.dataset.t)});
+async function show(t){tab=t;const L=$("#list");L.textContent="جارٍ التحميل…";
+ const q=t==="events"?sb.from(t).select("*").order("start_date",{ascending:false}):sb.from(t).select("*").order("created_at",{ascending:false});
+ const {data,error}=await q;L.textContent="";if(error){L.textContent="تعذّر التحميل";return}
+ if(t==="events"){L.append(el("button",{textContent:"+ فعالية جديدة",onclick:async()=>{await sb.from("events").insert({title:"فعالية جديدة",published:false});show("events")}}));data.forEach(ev)}
+ else if(!data.length)L.append(el("p",{textContent:"لا توجد طلبات بعد"}));else data.forEach(r=>req(t,r))}
+function req(t,r){const c=el("div",{className:"c"});
+ c.append(el("div",{className:"k",textContent:new Date(r.created_at).toLocaleString("ar")}));
+ Object.entries(r.data||{}).forEach(([k,v])=>c.append(el("div",{textContent:(LB[k]||k)+": "+v})));
+ const s=el("select");ST[t].forEach(o=>s.append(new Option(o,o,false,o===r.status)));c.append(s);
+ const n=el("textarea",{rows:2,placeholder:"ملاحظات خاصة / المهمة المسندة",value:r.notes||""});if(t==="volunteers")c.append(n);
+ c.append(el("button",{textContent:"حفظ",onclick:async()=>{const u={status:s.value};if(t==="volunteers")u.notes=n.value;const {error}=await sb.from(t).update(u).eq("id",r.id);alert(error?"فشل الحفظ":"تم الحفظ")}}));
+ c.append(el("button",{className:"o",textContent:"حذف نهائي",onclick:async()=>{if(confirm("حذف هذا الطلب نهائيًا؟")){await sb.from(t).delete().eq("id",r.id);show(t)}}}));
+ $("#list").append(c)}
+function ev(r){const c=el("div",{className:"c"}),f={};
+ [["title","العنوان"],["description","الوصف"],["duration","المدة"],["start_date","البداية","date"],["end_date","النهاية","date"],["how","طريقة المشاركة"]].forEach(([k,l,ty])=>{c.append(el("label",{textContent:l}));f[k]=el(k==="description"?"textarea":"input",{value:r[k]||"",type:ty||"text"});c.append(f[k])});
+ const p=el("input",{type:"checkbox",checked:r.published,style:"width:auto"});c.append(el("label",{},[p," منشورة للعامة"]));
+ c.append(el("button",{textContent:"حفظ",onclick:async()=>{const u={published:p.checked};for(const k in f)u[k]=f[k].value||null;const {error}=await sb.from("events").update(u).eq("id",r.id);alert(error?"فشل الحفظ":"تم الحفظ")}}));
+ c.append(el("button",{className:"o",textContent:"حذف",onclick:async()=>{if(confirm("حذف الفعالية؟")){await sb.from("events").delete().eq("id",r.id);show("events")}}}));
+ $("#list").append(c)}
+</script></body></html>
