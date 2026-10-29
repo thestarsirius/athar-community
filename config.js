@@ -1,4 +1,3 @@
-
 window.ATHAR_CONFIG = {
   START: "2026-11-01", // تاريخ بداية الدورة
   API: "https://athar-community.shahad1423asad.workers.dev", // رابط Cloudflare Worker
