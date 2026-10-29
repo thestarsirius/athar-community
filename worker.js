@@ -15,6 +15,8 @@ export default {
     const out = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: cors });
     try {
       if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+      if (req.method === "GET" && new URL(req.url).pathname === "/health") // فحص الإعدادات دون كشف أي سر
+        return out({ allowed_origin: origin || "(غير مضبوط)", set: Object.fromEntries(["SUPABASE_URL", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY", "NOTIFY_EMAIL", "ADMIN_URL"].map(n => [n, !!env[n]])) });
       const kind = new URL(req.url).pathname.replace(/^\/+|\/+$/g, "");
       if (req.method !== "POST" || !TABLES[kind]) return out({ error: "not_found" }, 404);
 
